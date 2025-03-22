@@ -5,7 +5,31 @@ import hashlib
 from delphifmx import *
 
 # Set the API token for Replicate
-os.environ["REPLICATE_API_TOKEN"] = "replicate_com_api_key"
+os.environ["REPLICATE_API_TOKEN"] = "r8_HTCqiQbvHE0U6M4Ehrncl5gxuPqFIdD4IX1Xn"
+
+def upload_image_to_imgbb(image_path, api_key):
+    import base64
+    import requests
+
+    with open(image_path, "rb") as file:
+        encoded_image = base64.b64encode(file.read()).decode("utf-8")
+
+    response = requests.post(
+        "https://api.imgbb.com/1/upload",
+        data={
+            "key": api_key,
+            "image": encoded_image
+        }
+    )
+
+    if response.status_code == 200:
+        return response.json()["data"]["url"]
+    else:
+        raise Exception(f"Image upload failed: {response.status_code} - {response.text}")
+
+
+
+
 
 class InteriorDesignApp(Form):
 
@@ -83,22 +107,28 @@ class InteriorDesignApp(Form):
 
     def __start_remodel(self, file_path, prompt_text):
         try:
-            # Use Replicate's async process to handle the image remodeling
+            imgbb_api_key = "dc2ce5a9753580b2c246b778dcceddf5"
+            image_url = upload_image_to_imgbb(file_path, imgbb_api_key)
+
             model = replicate.models.get("adirik/interior-design")
             version = model.versions.get("76604baddc85b1b4616e1c6475eca080da339c8875bd4996705440484a6eac38")
             self.prediction = replicate.predictions.create(
                 version=version,
-                input={"image": open(file_path, "rb"), "prompt": prompt_text,
-                "output_format": "png",
-                "output_quality": 80,
-                "negative_prompt": "blurry, illustration, distorted, horror",
-                "randomise_seeds": True,
-                "return_temp_files": False}
+                input={
+                    "image": image_url,
+                    "prompt": prompt_text,
+                    "output_format": "png",
+                    "output_quality": 80,
+                    "negative_prompt": "blurry, illustration, distorted, horror",
+                    "randomise_seeds": True,
+                    "return_temp_files": False
+                }
             )
-            self.timer.Enabled = True  # Enable the timer to start checking the status
+            self.timer.Enabled = True
         except Exception as e:
-            self.status_bar.Text = f"Status: Error occurred - {str(e)}"
-            self.upload_button.Enabled = True  # Re-enable the upload button
+            self.status_bar.Text = "Status: Uploading image to imgbb..."
+            Application.ProcessMessages()
+
 
     def __on_timer_tick(self, sender):
         if self.prediction is None:
