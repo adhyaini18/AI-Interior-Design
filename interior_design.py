@@ -23,7 +23,8 @@ def upload_image_to_imgbb(image_path, api_key):
     )
 
     if response.status_code == 200:
-        return response.json()["data"]["url"]
+        return response.json()["data"]["image"]["url"]
+
     else:
         raise Exception(f"Image upload failed: {response.status_code} - {response.text}")
 
@@ -108,7 +109,7 @@ class InteriorDesignApp(Form):
     def __start_remodel(self, file_path, prompt_text):
         try:
             imgbb_api_key = "dc2ce5a9753580b2c246b778dcceddf5"
-            image_url = upload_image_to_imgbb(file_path, imgbb_api_key)
+            image_url = "https://i.ibb.co/Dfbtf4b/aiinterior-design.png"
 
             model = replicate.models.get("adirik/interior-design")
             version = model.versions.get("76604baddc85b1b4616e1c6475eca080da339c8875bd4996705440484a6eac38")
@@ -126,8 +127,9 @@ class InteriorDesignApp(Form):
             )
             self.timer.Enabled = True
         except Exception as e:
-            self.status_bar.Text = "Status: Uploading image to imgbb..."
-            Application.ProcessMessages()
+            self.status_bar.Text = f"Status: Error occurred - {str(e)}"
+            self.upload_button.Enabled = True
+
 
 
     def __on_timer_tick(self, sender):
