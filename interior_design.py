@@ -93,13 +93,24 @@ class InteriorDesignApp(Form):
             "Authorization": f"Token {REPLICATE_API_TOKEN}",
             "Content-Type": "application/json"
         }
-
+    
         payload = {
-            "version": "dc2ce5a9753580b2c246b778dcceddf5",  # Replace with correct model version
+            "version": "dc2ce5a9753580b2c246b778dcceddf5",  # Replace with actual version
             "input": {
                 "image": image_url
             }
         }
+
+    response = requests.post(url, json=payload, headers=headers)
+
+    # 👇 Print the full error response for debugging
+    print("Status Code:", response.status_code)
+    print("Response:", response.text)
+
+    if response.status_code != 201:
+        self.StatusLabel.Text = "Replicate API Error"
+        return None
+
 
         response = requests.post(url, json=payload, headers=headers)
         if response.status_code != 201:
