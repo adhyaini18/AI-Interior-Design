@@ -134,10 +134,15 @@ class InteriorDesignApp(Form):
                 else:
                     self.status_bar.Text = "Status: No output received from prediction."
 
+        import traceback
+
         except Exception as e:
+            error_details = traceback.format_exc()
+            print(error_details)  # So you can see full details in terminal
+            ShowMessage(error_details)  # Optional popup for visibility
             self.status_bar.Text = f"Status: Error occurred - {str(e)}"
-            self.timer.Enabled = False
-            self.upload_button.Enabled = True  # Re-enable the upload button
+            self.upload_button.Enabled = True
+
 
 def main():
 
