@@ -88,7 +88,7 @@ class InteriorDesignApp(Form):
             version = model.versions.get("76604baddc85b1b4616e1c6475eca080da339c8875bd4996705440484a6eac38")
             self.prediction = replicate.predictions.create(
                 version=version,
-                input={"image": ""image": "https://i.ibb.co/Dfbtf4bw/aiinterior-design.png"
+                input={"image": "https://i.ibb.co/Dfbtf4bw/aiinterior-design.png"
 ", "prompt": prompt_text,
                 "output_format": "png",
                 "output_quality": 80,
@@ -98,8 +98,11 @@ class InteriorDesignApp(Form):
             )
             self.timer.Enabled = True  # Enable the timer to start checking the status
         except Exception as e:
-            self.status_bar.Text = f"Status: Error occurred - {str(e)}"
-            self.upload_button.Enabled = True  # Re-enable the upload button
+            import traceback
+            err_msg = traceback.format_exc()  # Get full error details
+            print("Error occurred:", err_msg)  # Also print to console
+            self.status_bar.Text = f"Status: Error - {str(e)}"
+            self.upload_button.Enabled = True
 
     def __on_timer_tick(self, sender):
         if self.prediction is None:
