@@ -88,7 +88,8 @@ class InteriorDesignApp(Form):
             version = model.versions.get("76604baddc85b1b4616e1c6475eca080da339c8875bd4996705440484a6eac38")
             self.prediction = replicate.predictions.create(
                 version=version,
-                input={"image": "https://ibb.co/JjdKjndr", "prompt": prompt_text,
+                input={"image": ""image": "https://i.ibb.co/Dfbtf4bw/aiinterior-design.png"
+", "prompt": prompt_text,
                 "output_format": "png",
                 "output_quality": 80,
                 "negative_prompt": "blurry, illustration, distorted, horror",
