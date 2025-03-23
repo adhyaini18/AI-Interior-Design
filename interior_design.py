@@ -1,143 +1,148 @@
+import os
+import replicate
+import urllib.request
+import hashlib
 from delphifmx import *
-import requests
-import base64
-import io
 
-# Replace with your API keys
-REPLICATE_API_TOKEN = "r8_91TNmim5tRoF5UPb65gHFdRDQchcM131DJleF"
-IMGBB_API_KEY = "https://i.ibb.co/Dfbtf4bw/aiinterior-design.png"
+# Set the API token for Replicate
+os.environ["REPLICATE_API_TOKEN"] = "r8_EHmfcTKgI5LXAHJrR067sGjPTj2gx7c3MWyd4"
 
 class InteriorDesignApp(Form):
 
     def __init__(self, owner):
-        self.Caption = "AI Interior Design - Powered by Replicate"
-        self.SetBounds(100, 100, 800, 600)
+        # Setting up the style and form properties
+        self.stylemanager = StyleManager(self)
+        self.stylemanager.SetStyleFromFile("Air.style")
 
-        # Upload Button
-        self.UploadButton = Button(self)
-        self.UploadButton.Parent = self
-        self.UploadButton.Text = "Upload Room Image"
-        self.UploadButton.SetBounds(30, 30, 200, 40)
-        self.UploadButton.OnClick = self.on_upload_click
+        self.SetProps(Caption="AI Interior Design Remodel + Replicate API", OnShow=self.__form_show, OnClose=self.__form_close)
 
-        # Generate Button
-        self.GenerateButton = Button(self)
-        self.GenerateButton.Parent = self
-        self.GenerateButton.Text = "Generate AI Design"
-        self.GenerateButton.SetBounds(250, 30, 200, 40)
-        self.GenerateButton.OnClick = self.on_generate_click
+        # Layout for the top components (Button, Label, and Memo for prompt)
+        self.layout_top = Layout(self)
+        self.layout_top.SetProps(Parent=self, Align="Top", Height="50", Margins=Bounds(RectF(3, 3, 3, 3)))
 
-        # Image Views
-        self.OriginalImage = Image(self)
-        self.OriginalImage.Parent = self
-        self.OriginalImage.SetBounds(30, 90, 320, 320)
+        # Layout for the top components (Button, Label, and Memo for prompt)
+        self.layout_left = Layout(self)
+        self.layout_left.SetProps(Parent=self, Align="Left", Width="300", Margins=Bounds(RectF(3, 3, 3, 3)))
 
-        self.AIImage = Image(self)
-        self.AIImage.Parent = self
-        self.AIImage.SetBounds(400, 90, 320, 320)
+        # Label to prompt the user for image upload
+        self.prompt_label = Label(self)
+        self.prompt_label.SetProps(Parent=self.layout_top, Align="Client", Text="Enter the prompt for your new room and then Select an Image of the room:", Position=Position(PointF(20, 20)), Margins=Bounds(RectF(3, 3, 3, 3)))
 
-        # Status Label
-        self.StatusLabel = Label(self)
-        self.StatusLabel.Parent = self
-        self.StatusLabel.Text = ""
-        self.StatusLabel.SetBounds(30, 430, 700, 40)
+        # Memo control for entering the interior design prompt
+        self.prompt_memo = Memo(self)
+        self.prompt_memo.SetProps(Parent=self.layout_left, Align="Top", Height=60, Text="Enter design prompt here...", Margins=Bounds(RectF(3, 3, 3, 3)))
 
-        self.local_image_path = None
-        self.image_url = None
+        # Button to trigger file upload
+        self.upload_button = Button(self)
+        self.upload_button.SetProps(Parent=self.layout_top, Align="Right", Text="Select Image", Position=Position(PointF(290, 18)), Width=120, OnClick=self.__upload_image, Margins=Bounds(RectF(3, 3, 3, 3)))
 
-    def on_upload_click(self, sender):
-        dlg = OpenDialog(self)
-        dlg.Title = "Select an Image"
-        if dlg.Execute():
-            self.local_image_path = dlg.FileName
-            self.OriginalImage.Bitmap.LoadFromFile(self.local_image_path)
-            self.StatusLabel.Text = "Image loaded. Ready to send."
+        # Image control for the original image display
+        self.img_original = ImageControl(self)
+        self.img_original.SetProps(Parent=self.layout_left, Align="Client", Position=Position(PointF(20, 60)), Width=300, Height=300, Margins=Bounds(RectF(3, 3, 3, 3)))
 
-    def on_generate_click(self, sender):
-        if not self.local_image_path:
-            self.StatusLabel.Text = "Please upload an image first!"
+        # Image control for the remodeled image display
+        self.img_remodel = ImageControl(self)
+        self.img_remodel.SetProps(Parent=self, Align="Client", Position=Position(PointF(340, 60)), Width=300, Height=300, Margins=Bounds(RectF(3, 3, 3, 3)))
+
+        # Status bar at the bottom
+        self.status_bar = Label(self)
+        self.status_bar.SetProps(Parent=self, Align="Bottom", Text="Status: Ready", Height=30, Margins=Bounds(RectF(3, 3, 3, 3)))
+
+        # Timer for updating the status periodically
+        self.timer = Timer(self)
+        self.timer.Interval = 1000  # Timer event will trigger every second
+        self.timer.Enabled = False
+        self.timer.OnTimer = self.__on_timer_tick
+
+        # Initialize variables for prediction handling
+        self.prediction = None
+        self.original_image_path = None
+
+    def __form_show(self, sender):
+        self.SetProps(Width=700, Height=450)
+
+    def __form_close(self, sender, action):
+        self.timer.Enabled = False
+        action = "caFree"
+
+    def __upload_image(self, sender):
+        self.timer.Enabled = False
+
+        open_dialog = OpenDialog(self)  # Create the OpenDialog instance
+        open_dialog.Filter = "Image Files|*.png;*.jpg;*.jpeg"  # Filter to show only image files
+        open_dialog.Title = "Select an Image"  # Set title of the dialog
+
+        if open_dialog.Execute():  # If the user selects a file and clicks OK
+            file_path = open_dialog.FileName  # Get the selected file path
+            self.original_image_path = file_path
+            self.img_original.LoadFromFile(file_path)
+            self.status_bar.Text = "Status: Uploading and processing image..."
+            self.upload_button.Enabled = False  # Disable upload button during processing
+            Application.ProcessMessages()
+            self.__start_remodel(file_path, self.prompt_memo.Text)
+
+    def __start_remodel(self, file_path, prompt_text):
+        try:
+            # Use Replicate's async process to handle the image remodeling
+            model = replicate.models.get("adirik/interior-design")
+            version = model.versions.get("76604baddc85b1b4616e1c6475eca080da339c8875bd4996705440484a6eac38")
+            self.prediction = replicate.predictions.create(
+                version=version,
+                input={"image": "https://bheemanpally-adh.imgbb.com/", "prompt": prompt_text,
+                "output_format": "png",
+                "output_quality": 80,
+                "negative_prompt": "blurry, illustration, distorted, horror",
+                "randomise_seeds": True,
+                "return_temp_files": False}
+            )
+            self.timer.Enabled = True  # Enable the timer to start checking the status
+        except Exception as e:
+            self.status_bar.Text = f"Status: Error occurred - {str(e)}"
+            self.upload_button.Enabled = True  # Re-enable the upload button
+
+    def __on_timer_tick(self, sender):
+        if self.prediction is None:
             return
 
-        self.StatusLabel.Text = "Uploading to imgbb..."
-        self.image_url = self.upload_image_to_imgbb(self.local_image_path)
+        try:
+            self.prediction.reload()  # Reload status periodically
+            if self.prediction.status == "processing":
+                lines = self.prediction.logs.strip().split('\n')
+                status = lines[-1] if lines else self.prediction.status
+                self.status_bar.Text = f"Status: {status}..."
 
-        if not self.image_url:
-            self.StatusLabel.Text = "Image upload failed."
-            return
+            elif self.prediction.status in ["succeeded", "failed", "canceled"]:
+                self.timer.Enabled = False  # Disable the timer when the process finishes
+                if self.prediction.status == "succeeded":
+                    image_url = self.prediction.output[0]
+                    file_name = './' + hashlib.md5(image_url.encode()).hexdigest() + '.png'
+                    urllib.request.urlretrieve(image_url, file_name)
 
-        self.StatusLabel.Text = "Calling Replicate API..."
-        ai_image_url = self.send_to_replicate(self.image_url)
+                    # Display the remodeled image
+                    self.img_remodel.LoadFromFile(file_name)
+                    self.status_bar.Text = "Status: Remodel complete!"
+                else:
+                    self.status_bar.Text = f"Status: Remodel failed with status: {self.prediction.status}"
+                self.upload_button.Enabled = True  # Re-enable the upload button
+                if self.prediction.output:
+                    image_url = self.prediction.output[0] if isinstance(self.prediction.output, list) else self.prediction.output
+                    # continue with download...
+                else:
+                    self.status_bar.Text = "Status: No output received from prediction."
 
-        if ai_image_url:
-            self.StatusLabel.Text = "AI design generated!"
-            self.load_image_from_url(ai_image_url, self.AIImage)
-        else:
-            self.StatusLabel.Text = "Replicate API failed."
-
-    def upload_image_to_imgbb(self, file_path):
-        with open(file_path, "rb") as f:
-            b64 = base64.b64encode(f.read())
-        url = "https://api.imgbb.com/1/upload"
-        payload = {
-            "key": IMGBB_API_KEY,
-            "image": b64
-        }
-        response = requests.post(url, data=payload)
-        if response.status_code == 200:
-            return response.json()["data"]["url"]
-        return None
-
-    def send_to_replicate(self, image_url):
-        url = "https://api.replicate.com/v1/predictions"
-        headers = {
-            "Authorization": f"Token {REPLICATE_API_TOKEN}",
-            "Content-Type": "application/json"
-        }
-    
-        payload = {
-            "version": "dc2ce5a9753580b2c246b778dcceddf5",  # Replace with actual version
-            "input": {
-                "image": image_url
-            }
-        }
-
-    response = requests.post(url, json=payload, headers=headers)
-
-    # 👇 Print the full error response for debugging
-    print("Status Code:", response.status_code)
-    print("Response:", response.text)
-
-    if response.status_code != 201:
-        self.StatusLabel.Text = "Replicate API Error"
-        return None
-
-
-        response = requests.post(url, json=payload, headers=headers)
-        if response.status_code != 201:
-            return None
-
-        prediction_url = response.json()["urls"]["get"]
-
-        # Poll the result
-        while True:
-            res = requests.get(prediction_url, headers=headers)
-            output = res.json()
-            if output["status"] == "succeeded":
-                return output["output"]
-            elif output["status"] == "failed":
-                return None
-
-    def load_image_from_url(self, url, image_control):
-        response = requests.get(url)
-        if response.status_code == 200:
-            image_stream = io.BytesIO(response.content)
-            image_control.Bitmap.LoadFromStream(image_stream)
+        except Exception as e:
+            self.status_bar.Text = f"Status: Error occurred - {str(e)}"
+            self.timer.Enabled = False
+            self.upload_button.Enabled = True  # Re-enable the upload button
 
 def main():
+
     Application.Initialize()
-    Application.Title = "AI Interior Design App"
+    Application.Title = "AI Interior Design Remodel + Replicate API"
     Application.MainForm = InteriorDesignApp(Application)
+    Application.MainForm.Show()
     Application.Run()
+    Application.MainForm.Destroy()
 
 if __name__ == '__main__':
     main()
